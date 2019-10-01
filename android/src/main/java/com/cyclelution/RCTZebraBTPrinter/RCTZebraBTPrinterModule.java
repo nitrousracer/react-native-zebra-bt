@@ -2,6 +2,7 @@ package com.cyclelution.RCTZebraBTPrinter;
 
 import java.lang.reflect.Method;
 import java.util.Set;
+
 import javax.annotation.Nullable;
 
 import android.app.Activity;
@@ -34,115 +35,49 @@ import static com.cyclelution.RCTZebraBTPrinter.RCTZebraBTPrinterPackage.TAG;
 
 @SuppressWarnings("unused")
 public class RCTZebraBTPrinterModule extends ReactContextBaseJavaModule {
+  private Connection printerConnection;
 
-    // Debugging
-    private static final boolean D = true;
+  public RCTZebraBTPrinterModule(ReactApplicationContext reactContext) {
+    super(reactContext);
+  }
 
-    private final ReactApplicationContext reactContext;
-
-    private Connection printerConnection;
-    private ZebraPrinter printer;
-
-    private String delimiter = "";
-
-    public RCTZebraBTPrinterModule(ReactApplicationContext reactContext) {
-        super(reactContext);
-
-        if (D) Log.d(TAG, "Bluetooth module started");
-
-        this.reactContext = reactContext;
-    }
-
-     @ReactMethod
-    /**
-     * Entry point
-     */
-    public void printLabel(String userPrinterSerial, int userPrintCount, String userText1, String userText2, String userText3, Promise promise) {
-
-        if (D) Log.d(TAG, "printLabel triggered on Android " + userPrinterSerial + " " + userText1);
-        //promise.resolve(true);
-
-        if (D) Log.d(TAG, "printLabel connecting to printer");
-
-        printerConnection = null;
-
+  @ReactMethod
+  public void connect(String userPrinterSerial, Promise promise) {
+    try {
+      if (printerConnection == null) {
         printerConnection = new BluetoothConnection(userPrinterSerial);
-
-        try {
-
-            printerConnection.open();
-
-            if (D) Log.d(TAG, "printLabel com open");
-
-            ZebraPrinter printer = null;
-
-            if (printerConnection.isConnected()) {
-
-                try {
-
-                    printer = ZebraPrinterFactory.getInstance(printerConnection);
-
-                    PrinterLanguage pl = printer.getPrinterControlLanguage();
-
-                } catch (ConnectionException e) {
-
-                    if (D) Log.d(TAG, "printLabel com failed to open 2nd stage");
-                    printer = null;
-
-                } catch (ZebraPrinterLanguageUnknownException e) {
-
-                    if (D) Log.d(TAG, "printLabel print language get failed");
-                    printer = null;
-
-                }
-
-            }
-
-            try {
-
-                if (D) Log.d(TAG, "printLabel trying to send print job");
-
-                String cpclConfigLabel = "! 0 200 200 304 "+ userPrintCount + "\r\n" + "TEXT 0 3 10 10 CYC LABEL START\r\n" + "TEXT 0 3 10 40 "+userText1+" " + userText2 + " " + userText3 + "\r\n" + "BARCODE 128 1 1 40 10 80 "+userText1+"\r\n" + "TEXT 0 3 10 150 CYC LABEL END\r\n" + "FORM\r\n" + "PRINT\r\n";
-                                
-                byte[]  configLabel = cpclConfigLabel.getBytes();
-
-                printerConnection.write(configLabel);
-
-                if (printerConnection instanceof BluetoothConnection) {
-
-                    String friendlyName = ((BluetoothConnection) printerConnection).getFriendlyName();
-
-                    if (D) Log.d(TAG, "printLabel printed with " + friendlyName);
-
-                }
-
-            } catch (ConnectionException e) {
-
-                if (D) Log.d(TAG, "printLabel com failed to open 2nd stage");
-                promise.resolve(false);
-
-            } finally {
-
-                //disconnect();
-                if (D) Log.d(TAG, "printLabel done");
-                promise.resolve(true);
-
-            }
-
-        } catch (ConnectionException e) {
-
-            if (D) Log.d(TAG, "printLabel com failed to open");
-            promise.resolve(false);
-
-        }
-
-        
-
+        printerConnection.open();
+      }
+      promise.resolve(true);
+    } catch (ConnectionException e) {
+      printerConnection = null;
+      promise.reject(e);
     }
+  }
 
-    @Override
-    public String getName() {
-        return "RCTZebraBTPrinter";
+  @ReactMethod
+  public void printLabel(String cpclCommand, Promise promise) {
+    if (printerConnection == null) {
+      promise.reject(new Error("Not connected"));
+      return;
     }
+    try {
+      printerConnection.write(cpclCommand.getBytes());
+      promise.resolve(true);
+    } catch (ConnectionException e) {
+      try {
+        printerConnection.close();
+      } catch (ConnectionException e2) {
+        /* do nothing */
+      }
+      printerConnection = null;
+      promise.reject(e);
+    }
+  }
+
+  @Override
+  public String getName() {
+    return "RCTZebraBTPrinter";
+  }
 
 }
